@@ -1,8 +1,8 @@
 package cesur.dam.inventarioappg1.controllers;
 
 import cesur.dam.inventarioappg1.SceneNavigator;
+import cesur.dam.inventarioappg1.data.DAO;
 import cesur.dam.inventarioappg1.models.Equipo;
-import javafx.beans.property.SimpleStringProperty;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
 import javafx.event.ActionEvent;
@@ -11,6 +11,7 @@ import javafx.fxml.Initializable;
 import javafx.scene.control.*;
 
 import java.net.URL;
+import java.util.Optional;
 import java.util.ResourceBundle;
 
 public class DetailsController implements Initializable {
@@ -25,108 +26,95 @@ public class DetailsController implements Initializable {
     private CheckBox chkAvailable;
     @FXML
     private Spinner<Integer> spinnerId;
+    @FXML
+    private Button btnDelete;
 
+    private final DAO<Equipo> dao;
+    private final Equipo equipoSeleccionado;
 
-    /**
-     * Called to initialize a controller after its root element has been
-     * completely processed.
-     *
-     * @param location  The location used to resolve relative paths for the root object, or
-     *                  {@code null} if the location is not known.
-     * @param resources The resources used to localize the root object, or {@code null} if
-     *                  the root object was not localized.
-     */
-    @Override
-    public void initialize(URL location, ResourceBundle resources) {
-        spinnerId.setValueFactory(new SpinnerValueFactory.IntegerSpinnerValueFactory(0, 1000, 0,1));
-
-        /*
-            ChoiceBox  \
-            ListView    \ Observable .getItems() .setItems()
-            TableView   /
-
-         */
-
-        ObservableList<String> categories = FXCollections.observableArrayList();
-        choiceCategory.setItems(categories);
-
-        categories.add("Keyboard");
-        categories.add("Laptop");
-
-        choiceCategory.getItems().add("Gamepad");
-        choiceCategory.getItems().add("Monitor");
-        choiceCategory.getItems().add("Computer");
-        choiceCategory.getItems().add("Printer");
-
-        choiceCategory.getSelectionModel().selectFirst();
-
-
+    public DetailsController(DAO<Equipo> dao, Equipo equipoSeleccionado) {
+        this.dao = dao;
+        this.equipoSeleccionado = equipoSeleccionado;
     }
 
-    /**
-     * Guarda los datos introducidos en el formulario.
-     * <p>
-     * Comprueba que los campos de id, nombre, categoría y disponible no estén vacíos.
-     * Si todos tienen contenido, muestra una alerta informativa con el nombre del
-     * artículo, limpia los campos y deja el formulario listo para un nuevo registro.
-     * Si algún campo está vacío, no realiza ninguna acción.
-     * </p>
-     *
-     * @param actionEvent evento de acción generado al pulsar el botón guardar
-     */
+    @Override
+    public void initialize(URL location, ResourceBundle resources) {
+        spinnerId.setValueFactory(new SpinnerValueFactory.IntegerSpinnerValueFactory(0, 1000, 0, 1));
+        spinnerId.setDisable(true);
+
+        ObservableList<String> categories = FXCollections.observableArrayList(
+                "Keyboard", "Laptop", "Gamepad", "Monitor", "Computer", "Printer"
+        );
+        choiceCategory.setItems(categories);
+        choiceCategory.getSelectionModel().selectFirst();
+
+        if (equipoSeleccionado != null) {
+            welcomeText.setText("Modificar equipo");
+            spinnerId.getValueFactory().setValue(equipoSeleccionado.getId().intValue());
+            txtName.setText(equipoSeleccionado.getNombre());
+            choiceCategory.setValue(equipoSeleccionado.getCategoria());
+            chkAvailable.setSelected(Boolean.TRUE.equals(equipoSeleccionado.getDisponible()));
+        } else {
+            welcomeText.setText("Nuevo equipo");
+            btnDelete.setVisible(false);
+            btnDelete.setManaged(false);
+        }
+    }
+
     @FXML
     public void save(ActionEvent actionEvent) {
         if (hasEmptyFields()) {
             return;
         }
 
+        String name = txtName.getText();
+        String category = choiceCategory.getSelectionModel().getSelectedItem();
+        boolean available = chkAvailable.isSelected();
+
+        Equipo equipment = (equipoSeleccionado != null) ? equipoSeleccionado : new Equipo();
+        equipment.setNombre(name);
+        equipment.setCategoria(category);
+        equipment.setDisponible(available);
+
+        if (equipoSeleccionado == null) {
+            dao.save(equipment);
+        } else {
+            dao.update(equipment);
+        }
+
         Alert alert = new Alert(Alert.AlertType.INFORMATION);
         alert.setTitle("Guardar");
         alert.setHeaderText("Guardando");
-
-        String name = txtName.getText();
-        String category = choiceCategory.getSelectionModel().getSelectedItem();
-        String available = chkAvailable.isSelected() ? "disponible" : "no disponible";
-
-        alert.setContentText(name + " | " + category + " | " + available);
+        alert.setContentText(name + " | " + category + " | " + (available ? "disponible" : "no disponible"));
         alert.showAndWait();
-        txtName.clear();
 
-        Equipo equipment = new Equipo();
-        equipment.setNombre(name);
-        equipment.setCategoria(category);
-        equipment.setId(Long.valueOf(spinnerId.getValue()));
-        equipment.setDisponible(chkAvailable.isSelected());
-//
-//        table.getItems().add(equipment);
-//
-//        table.getSelectionModel().selectedItemProperty().addListener((observable, oldValue, newValue) -> {
-//            System.out.println(oldValue+" | "+newValue);
-//        });
-
+        SceneNavigator.navigateToInjection("main-view.fxml", "Main");
     }
 
-    /**
-     * Comprueba si alguno de los campos del formulario está vacío.
-     *
-     * @return {@code true} si al menos uno de los campos id, nombre, categoría
-     *         o disponible está vacío; {@code false} en caso contrario
-     */
+    @FXML
+    public void delete(ActionEvent actionEvent) {
+        if (equipoSeleccionado == null) {
+            return;
+        }
+
+        Alert confirm = new Alert(Alert.AlertType.CONFIRMATION);
+        confirm.setTitle("Borrar equipo");
+        confirm.setHeaderText("¿Eliminar " + equipoSeleccionado.getNombre() + "?");
+        confirm.setContentText("Esta acción no se puede deshacer.");
+
+        Optional<ButtonType> result = confirm.showAndWait();
+        if (result.isPresent() && result.get() == ButtonType.OK) {
+            dao.deleteById(equipoSeleccionado.getId());
+            SceneNavigator.navigateToInjection("main-view.fxml", "Main");
+        }
+    }
+
     private boolean hasEmptyFields() {
-        return txtName.getText().isEmpty();
+        return txtName.getText().isBlank();
     }
 
-    /**
-     * Cierra la aplicación.
-     * <p>
-     * Se invoca al pulsar el botón volver y finaliza el proceso con
-     * {@link System#exit(int)} usando el código de salida {@code 0}.
-     * </p>
-     *
-     * @param actionEvent evento de acción generado al pulsar el botón volver
-     */
     @FXML
     public void goBack(ActionEvent actionEvent) {
-        SceneNavigator.navigateTo("main-view.fxml","Vista principal");
+        SceneNavigator.navigateToInjection("main-view.fxml", "Main");
     }
 }
